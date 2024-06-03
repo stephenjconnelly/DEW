@@ -11,12 +11,21 @@ from record import record_on_sound, save_wav
 
 latitude = "43.4631"
 longitude = "-5.0561"
-client = OpenAI(api_key=''
-)
 
 # latitude =  '-33.865143'
 # longitude = '151.209900'
 
+
+
+
+def get_random_numer(min, max):
+    print(min, max)
+    if(min != None or max != None):
+        return str(random.randrange(int(min), int(max)))
+    else:
+        return "Number could not be generated"
+
+    
 #
 # Gets current weather conditions from OpenWeather API. 
 #
@@ -56,13 +65,15 @@ def get_current_weather(unit):
     })
 
 def speech_to_text():
-    ouput_file_path = Path(__file__).parent / "output.mp3"
+    ouput_file_path = Path(__file__).parent / "output.wav"
     audio_file= open(ouput_file_path, "rb")
     transcription = client.audio.transcriptions.create(
         model="whisper-1", 
         file=audio_file
     )
-    return transcription
+    print(transcription)
+    return transcription.text
+    # return transcription.get('text', [])
 
 
 def text_to_speech(message):
@@ -77,21 +88,21 @@ def text_to_speech(message):
     print(speech_file_path)
     response.stream_to_file(speech_file_path)
     PlaySound.playsound(speech_file_path)
-    #response.with_streaming_response.method("output.mp3")
     
 
-def run_conversation():
+def run_conversation(message):
     messages = [
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "What is the weather like?"},
-            {"role": "assistant", "content": 'AI will use the OpenWeather API call to execute a Python script to get the current weather conditions from the user. It will provide an answer to the user in natural language and not list the conditons. It will also name the city where the user is. When referring to units of measurement it should pronounce the full words (e.g. "meters per second")'}
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": 'Use the provided functions to answer questions.'}
         ]
     tools = [
         {
             "type": "function",
             "function": {
                 "name": "get_current_weather",
-                "description": "Get the current weather in a given location",
+                # "description": "Get the current weather in a given location",
+                "description": 'AI will use the OpenWeather API call to execute a Python script to get the current weather conditions from the user. It will provide an answer to the user in natural language and not list the conditons. It will also name the city where the user is. When referring to units of measurement it should pronounce the full words (e.g. "meters per second")',
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -108,6 +119,24 @@ def run_conversation():
                     # "required": ["location"],
                 },
             },
+            "type": "function",
+            "function": {
+                "name": "get_random_number",
+                "description": "AI will use the OpenWeather API call to execute a Python script to generate a random number in a range. It will provide an answer to the user in natural language.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        'min': {
+                            'type': 'string',
+                            'description': 'The minimum number in a range specified by the user.'
+                        },
+                        'max': {
+                            'type': 'string',
+                            'description': 'The maximum number in a range specified by the user. ',
+                        }
+                    },
+                },
+            },
         }
     ]
     response = client.chat.completions.create(
@@ -121,17 +150,22 @@ def run_conversation():
     if tool_calls:
         available_functions = {
             "get_current_weather": get_current_weather,
+            "get_random_number": get_random_numer
         }
         messages.append(response_message) 
         for tool_call in tool_calls:
             function_name = tool_call.function.name
             function_to_call = available_functions[function_name]
             function_args = json.loads(tool_call.function.arguments)
-            function_response = function_to_call(
-                # longitude=function_args.get("longitude"),
-                # latitude=function_args.get("latitude"),
-                unit=function_args.get("unit"),
-            )
+            if(function_to_call == get_random_numer):
+                function_response = function_to_call(
+                    min = function_args.get('min'),
+                    max = function_args.get('max')
+                )
+            elif(function_to_call == get_current_weather):
+                function_response = function_to_call(
+                    unit=function_args.get("unit"),
+                )
             messages.append(
                 {
                     "tool_call_id": tool_call.id,
@@ -144,16 +178,12 @@ def run_conversation():
             model="gpt-4o",
             messages=messages,        
         )
-        text_to_speech(second_response.choices[0].message.content)
-        return "to speech"
-        # function_response_content = json.loads(messages[-1]["content"])
-        
-        # final_message = create_dynamic_message(function_response_content)
-        
-        # return final_message
-frames = record_on_sound()
-save_wav('output.wav', frames)
+        # text_to_speech(second_response.choices[0].message.content)   
+# frames = record_on_sound()
+# save_wav('output.wav', frames)
+message = sys.argv[1]
 # print("Give me one moment.")
 # PlaySound.playsound()
-print(run_conversation())
+# message = speech_to_text()
+print(run_conversation(message))
 
