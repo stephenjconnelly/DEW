@@ -1,13 +1,14 @@
 from openai import OpenAI
 from openweather import OpenWeather
 import json
-import requests
-import math
+
 import sys 
 import random
 import playsound as PlaySound
 from pathlib import Path
+from functions import flip_a_coin, get_current_weather, get_random_numer
 from record import record_on_sound, save_wav
+from tools import tools
 
 latitude = "43.4631"
 longitude = "-5.0561"
@@ -18,51 +19,6 @@ longitude = "-5.0561"
 
 
 
-def get_random_numer(min, max):
-    print(min, max)
-    if(min != None or max != None):
-        return str(random.randrange(int(min), int(max)))
-    else:
-        return "Number could not be generated"
-
-    
-#
-# Gets current weather conditions from OpenWeather API. 
-#
-def get_current_weather(unit):
-    print(latitude)
-    print(longitude)
-    try:
-        API_key = ''
-        url = f'https://api.openweathermap.org/data/2.5/weather?lat={latitude}&lon={longitude}&appid={API_key}'
-        r = requests.get(url)        
-        data = r.json()
-        # print(data)
-        main = data.get('main', [])
-        weather = data.get('weather', [])
-        wind = data.get('wind', [])
-        rain = data.get('rain', [])
-        city = data.get('name', [])
-    except AttributeError as e:
-        return "Error retrieving weather information. Please try again"
-    # print(city)
-
-    feelsLike = math.floor(main.get('feels_like', 0) - 273.15)
-    temperature = math.floor(main.get('temp', 0) - 273.15)
-    windSpeed = math.floor(wind.get('speed', 0))
-    description = weather[0].get('description', "No description available") if weather else "No description available"
-    precipitation = rain.get('1h', 0) if rain else "0"
-    
-    return json.dumps({
-        #"city": city,
-       # "name": name,
-        "feelsLike": feelsLike,
-        "temperature": temperature,
-        "windSpeed": windSpeed,
-        "description": description,
-        "precipitation": precipitation,
-        "city": city
-    })
 
 def speech_to_text():
     ouput_file_path = Path(__file__).parent / "output.wav"
@@ -96,53 +52,11 @@ def run_conversation(message):
             {"role": "user", "content": message},
             {"role": "assistant", "content": 'Use the provided functions to answer questions.'}
         ]
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "get_current_weather",
-                # "description": "Get the current weather in a given location",
-                "description": 'AI will use the OpenWeather API call to execute a Python script to get the current weather conditions from the user. It will provide an answer to the user in natural language and not list the conditons. It will also name the city where the user is. When referring to units of measurement it should pronounce the full words (e.g. "meters per second")',
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        # 'longitude': {
-                        #     'type': 'string',
-                        #     'description': 'A longitude value.'
-                        # },
-                        # 'latitude': {
-                        #     'type': 'string',
-                        #     'description': 'A latitude value.'
-                        # },
-                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
-                    },
-                    # "required": ["location"],
-                },
-            },
-            "type": "function",
-            "function": {
-                "name": "get_random_number",
-                "description": "AI will use the OpenWeather API call to execute a Python script to generate a random number in a range. It will provide an answer to the user in natural language.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        'min': {
-                            'type': 'string',
-                            'description': 'The minimum number in a range specified by the user.'
-                        },
-                        'max': {
-                            'type': 'string',
-                            'description': 'The maximum number in a range specified by the user. ',
-                        }
-                    },
-                },
-            },
-        }
-    ]
+    
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
-        tools=tools,
+        tools=tools(),
         tool_choice="auto", 
     )
     response_message = response.choices[0].message
@@ -150,7 +64,8 @@ def run_conversation(message):
     if tool_calls:
         available_functions = {
             "get_current_weather": get_current_weather,
-            "get_random_number": get_random_numer
+            "get_random_number": get_random_numer,
+            "flip_a_coin": flip_a_coin
         }
         messages.append(response_message) 
         for tool_call in tool_calls:
@@ -166,6 +81,8 @@ def run_conversation(message):
                 function_response = function_to_call(
                     unit=function_args.get("unit"),
                 )
+            elif(function_to_call == flip_a_coin):
+                function_response = function_to_call()
             messages.append(
                 {
                     "tool_call_id": tool_call.id,
@@ -178,6 +95,7 @@ def run_conversation(message):
             model="gpt-4o",
             messages=messages,        
         )
+        return second_response.choices[0].message.content
         # text_to_speech(second_response.choices[0].message.content)   
 # frames = record_on_sound()
 # save_wav('output.wav', frames)
